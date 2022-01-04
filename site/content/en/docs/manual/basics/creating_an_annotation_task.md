@@ -76,6 +76,9 @@ If you select tab `Connected file share` you can choose files for annotation fro
 If you select ` Remote source` , you'll see a field where you can enter a list of URLs (one URL per line).
 If you upload a video or dataset with images and select `Use cache` option, you can attach a `manifest.jsonl` file.
 You can find how to prepare it [here](/docs/manual/advanced/dataset_manifest/).
+If you select the `Cloud Storage` tab, you can select a cloud storage (for this type the cloud storage name),
+after that choose the manifest file and select the required files.
+For more information on how to attach cloud storage, see [attach cloud storage](/docs/manual/basics/attach-cloud-storage/)
 
 ![](/images/image127.jpg)
 
@@ -122,7 +125,15 @@ To create a 3D task, you need to use the following directory structures:
 
 ## Advanced configuration
 
-![](/images/image128_use_cache.jpg)
+![](/images/image128.jpg)
+
+### Sorting method
+
+Option to sort the data. It is not relevant for videos.
+For example, the sequence `2.jpeg, 10.jpeg, 1.jpeg` after sorting will be:
+- `lexicographical`: 1.jpeg, 10.jpeg, 2.jpeg
+- `natural`: 1.jpeg, 2.jpeg, 10.jpeg
+- `predefined`: 2.jpeg, 10.jpeg, 1.jpeg
 
 ### Use zip chunks
 

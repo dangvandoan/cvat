@@ -3,23 +3,35 @@
 // SPDX-License-Identifier: MIT
 
 import React from 'react';
+import { withRouter, RouteComponentProps } from 'react-router';
+
 import Menu from 'antd/lib/menu';
 import Modal from 'antd/lib/modal';
+import Text from 'antd/lib/typography/Text';
+import InputNumber from 'antd/lib/input-number';
+import Checkbox from 'antd/lib/checkbox';
+import Collapse from 'antd/lib/collapse';
+
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { MenuInfo } from 'rc-menu/lib/interface';
 
+import CVATTooltip from 'components/common/cvat-tooltip';
 import LoadSubmenu from 'components/actions-menu/load-submenu';
-import { DimensionType } from '../../../reducers/interfaces';
+import getCore from 'cvat-core-wrapper';
+import { JobStage } from 'reducers/interfaces';
+
+const core = getCore();
 
 interface Props {
     taskMode: string;
     loaders: any[];
     dumpers: any[];
     loadActivity: string | null;
-    isReviewer: boolean;
     jobInstance: any;
     onClickMenu(params: MenuInfo): void;
     onUploadAnnotations(format: string, file: File): void;
+    stopFrame: number;
+    removeAnnotations(startnumber: number, endnumber: number, delTrackKeyframesOnly:boolean): void;
     setForceExitAnnotationFlag(forceExit: boolean): void;
     saveAnnotations(jobInstance: any, afterSave?: () => void): void;
 }
@@ -29,26 +41,28 @@ export enum Actions {
     EXPORT_TASK_DATASET = 'export_task_dataset',
     REMOVE_ANNO = 'remove_anno',
     OPEN_TASK = 'open_task',
-    REQUEST_REVIEW = 'request_review',
-    SUBMIT_REVIEW = 'submit_review',
     FINISH_JOB = 'finish_job',
     RENEW_JOB = 'renew_job',
 }
 
-export default function AnnotationMenuComponent(props: Props): JSX.Element {
+function AnnotationMenuComponent(props: Props & RouteComponentProps): JSX.Element {
     const {
         loaders,
         loadActivity,
-        isReviewer,
         jobInstance,
+        stopFrame,
+        history,
         onClickMenu,
         onUploadAnnotations,
+        removeAnnotations,
         setForceExitAnnotationFlag,
         saveAnnotations,
     } = props;
 
-    const jobStatus = jobInstance.status;
-    const taskID = jobInstance.task.id;
+    const jobStage = jobInstance.stage;
+    const jobState = jobInstance.state;
+    const taskID = jobInstance.taskId;
+    const { JobState } = core.enums;
 
     function onClickMenuWrapper(params: MenuInfo): void {
         function checkUnsavedChanges(_params: MenuInfo): void {
@@ -80,14 +94,52 @@ export default function AnnotationMenuComponent(props: Props): JSX.Element {
         }
 
         if (params.key === Actions.REMOVE_ANNO) {
+            let removeFrom: number;
+            let removeUpTo: number;
+            let removeOnlyKeyframes = false;
+            const { Panel } = Collapse;
             Modal.confirm({
-                title: 'All the annotations will be removed',
-                content:
-                    'You are going to remove all the annotations from the client. ' +
-                    'It will stay on the server till you save the job. Continue?',
+                title: 'Remove Annotations',
+                content: (
+                    <div>
+                        <Text>You are going to remove the annotations from the client. </Text>
+                        <Text>It will stay on the server till you save the job. Continue?</Text>
+                        <br />
+                        <br />
+                        <Collapse bordered={false}>
+                            <Panel header={<Text>Select Range</Text>} key={1}>
+                                <Text>From: </Text>
+                                <InputNumber
+                                    min={0}
+                                    max={stopFrame}
+                                    onChange={(value) => {
+                                        removeFrom = value;
+                                    }}
+                                />
+                                <Text>  To: </Text>
+                                <InputNumber
+                                    min={0}
+                                    max={stopFrame}
+                                    onChange={(value) => { removeUpTo = value; }}
+                                />
+                                <CVATTooltip title='Applicable only for annotations in range'>
+                                    <br />
+                                    <br />
+                                    <Checkbox
+                                        onChange={(check) => {
+                                            removeOnlyKeyframes = check.target.checked;
+                                        }}
+                                    >
+                                        Delete only keyframes for tracks
+                                    </Checkbox>
+                                </CVATTooltip>
+                            </Panel>
+                        </Collapse>
+                    </div>
+                ),
                 className: 'cvat-modal-confirm-remove-annotation',
                 onOk: () => {
-                    onClickMenu(params);
+                    removeAnnotations(removeFrom, removeUpTo, removeOnlyKeyframes);
                 },
                 okButtonProps: {
                     type: 'primary',
@@ -95,12 +147,21 @@ export default function AnnotationMenuComponent(props: Props): JSX.Element {
                 },
                 okText: 'Delete',
             });
-        } else if (params.key === Actions.REQUEST_REVIEW) {
-            checkUnsavedChanges(params);
+        } else if (params.key.startsWith('state:')) {
+            Modal.confirm({
+                title: 'Do you want to change current job state?',
+                content: `Job state will be switched to "${params.key.split(':')[1]}". Continue?`,
+                okText: 'Continue',
+                cancelText: 'Cancel',
+                className: 'cvat-modal-content-change-job-state',
+                onOk: () => {
+                    checkUnsavedChanges(params);
+                },
+            });
         } else if (params.key === Actions.FINISH_JOB) {
             Modal.confirm({
-                title: 'The job status is going to be switched',
-                content: 'Status will be changed to "completed". Would you like to continue?',
+                title: 'The job stage is going to be switched',
+                content: 'Stage will be changed to "acceptance". Would you like to continue?',
                 okText: 'Continue',
                 cancelText: 'Cancel',
                 className: 'cvat-modal-content-finish-job',
@@ -110,8 +171,8 @@ export default function AnnotationMenuComponent(props: Props): JSX.Element {
             });
         } else if (params.key === Actions.RENEW_JOB) {
             Modal.confirm({
-                title: 'The job status is going to be switched',
-                content: 'Status will be changed to "annotations". Would you like to continue?',
+                title: 'Do you want to renew the job?',
+                content: 'Stage will be set to "in progress", state will be set to "annotation". Would you like to continue?',
                 okText: 'Continue',
                 cancelText: 'Cancel',
                 className: 'cvat-modal-content-renew-job',
@@ -124,10 +185,13 @@ export default function AnnotationMenuComponent(props: Props): JSX.Element {
         }
     }
 
-    const is2d = jobInstance.task.dimension === DimensionType.DIM_2D;
+    const computeClassName = (menuItemState: string): string => {
+        if (menuItemState === jobState) return 'cvat-submenu-current-job-state-item';
+        return '';
+    };
 
     return (
-        <Menu onClick={onClickMenuWrapper} className='cvat-annotation-menu' selectable={false}>
+        <Menu onClick={(params: MenuInfo) => onClickMenuWrapper(params)} className='cvat-annotation-menu' selectable={false}>
             {LoadSubmenu({
                 loaders,
                 loadActivity,
@@ -149,21 +213,44 @@ export default function AnnotationMenuComponent(props: Props): JSX.Element {
                     }
                 },
                 menuKey: Actions.LOAD_JOB_ANNO,
-                taskDimension: jobInstance.task.dimension,
+                taskDimension: jobInstance.dimension,
             })}
             <Menu.Item key={Actions.EXPORT_TASK_DATASET}>Export task dataset</Menu.Item>
             <Menu.Item key={Actions.REMOVE_ANNO}>Remove annotations</Menu.Item>
             <Menu.Item key={Actions.OPEN_TASK}>
-                <a href={`/tasks/${taskID}`} onClick={(e: React.MouseEvent) => e.preventDefault()}>
+                <a
+                    href={`/tasks/${taskID}`}
+                    onClick={(e: React.MouseEvent) => {
+                        e.preventDefault();
+                        history.push(`/tasks/${taskID}`);
+                        return false;
+                    }}
+                >
                     Open the task
                 </a>
             </Menu.Item>
-            {jobStatus === 'annotation' && is2d && <Menu.Item key={Actions.REQUEST_REVIEW}>Request a review</Menu.Item>}
-            {jobStatus === 'annotation' && <Menu.Item key={Actions.FINISH_JOB}>Finish the job</Menu.Item>}
-            {jobStatus === 'validation' && isReviewer && (
-                <Menu.Item key={Actions.SUBMIT_REVIEW}>Submit the review</Menu.Item>
-            )}
-            {jobStatus === 'completed' && <Menu.Item key={Actions.RENEW_JOB}>Renew the job</Menu.Item>}
+            {jobStage !== JobStage.ACCEPTANCE ? (
+                <Menu.SubMenu popupClassName='cvat-annotation-menu-job-state-submenu' key='job-state-submenu' title='Change job state'>
+                    <Menu.Item key={`state:${JobState.NEW}`}>
+                        <Text className={computeClassName(JobState.NEW)}>{JobState.NEW}</Text>
+                    </Menu.Item>
+                    <Menu.Item key={`state:${JobState.IN_PROGRESS}`}>
+                        <Text className={computeClassName(JobState.IN_PROGRESS)}>{JobState.IN_PROGRESS}</Text>
+                    </Menu.Item>
+                    <Menu.Item key={`state:${JobState.REJECTED}`}>
+                        <Text className={computeClassName(JobState.REJECTED)}>{JobState.REJECTED}</Text>
+                    </Menu.Item>
+                    <Menu.Item key={`state:${JobState.COMPLETED}`}>
+                        <Text className={computeClassName(JobState.COMPLETED)}>{JobState.COMPLETED}</Text>
+                    </Menu.Item>
+                </Menu.SubMenu>
+            ) : null }
+            {[JobStage.ANNOTATION, JobStage.REVIEW].includes(jobStage) ?
+                <Menu.Item key={Actions.FINISH_JOB}>Finish the job</Menu.Item> : null}
+            {jobStage === JobStage.ACCEPTANCE ?
+                <Menu.Item key={Actions.RENEW_JOB}>Renew the job</Menu.Item> : null}
         </Menu>
     );
 }
+
+export default withRouter(AnnotationMenuComponent);

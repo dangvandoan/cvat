@@ -44,11 +44,20 @@
 }
 
 .cvat-cloud-storage-item {
+    margin-bottom: $grid-unit-size;
+
     div.ant-typography {
         margin-bottom: 0;
     }
 
+    cursor: default;
+
+    .cvat-cloud-storage-item-loading-preview,
     .cvat-cloud-storage-item-empty-preview {
+        .ant-spin {
+            position: inherit;
+        }
+
         font-size: $grid-unit-size * 15;
         text-align: center;
         height: $grid-unit-size * 24;

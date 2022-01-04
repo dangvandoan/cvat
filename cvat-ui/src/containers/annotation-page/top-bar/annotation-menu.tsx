@@ -8,32 +8,31 @@ import { connect } from 'react-redux';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { MenuInfo } from 'rc-menu/lib/interface';
 
-import { CombinedState, TaskStatus } from 'reducers/interfaces';
+import { CombinedState, JobStage } from 'reducers/interfaces';
 import AnnotationMenuComponent, { Actions } from 'components/annotation-page/top-bar/annotation-menu';
 import { updateJobAsync } from 'actions/tasks-actions';
 import {
     uploadJobAnnotationsAsync,
-    removeAnnotationsAsync,
     saveAnnotationsAsync,
-    switchRequestReviewDialog as switchRequestReviewDialogAction,
-    switchSubmitReviewDialog as switchSubmitReviewDialogAction,
     setForceExitAnnotationFlag as setForceExitAnnotationFlagAction,
+    removeAnnotationsAsync as removeAnnotationsAsyncAction,
 } from 'actions/annotation-actions';
 import { exportActions } from 'actions/export-actions';
+import getCore from 'cvat-core-wrapper';
+
+const core = getCore();
 
 interface StateToProps {
     annotationFormats: any;
     jobInstance: any;
+    stopFrame: number;
     loadActivity: string | null;
-    user: any;
 }
 
 interface DispatchToProps {
     loadAnnotations(job: any, loader: any, file: File): void;
-    showExportModal(task: any): void;
-    removeAnnotations(sessionInstance: any): void;
-    switchRequestReviewDialog(visible: boolean): void;
-    switchSubmitReviewDialog(visible: boolean): void;
+    showExportModal(jobInstance: any): void;
+    removeAnnotations(startnumber: number, endnumber: number, delTrackKeyframesOnly: boolean): void;
     setForceExitAnnotationFlag(forceExit: boolean): void;
     saveAnnotations(jobInstance: any, afterSave?: () => void): void;
     updateJob(jobInstance: any): void;
@@ -43,23 +42,25 @@ function mapStateToProps(state: CombinedState): StateToProps {
     const {
         annotation: {
             activities: { loads: jobLoads },
-            job: { instance: jobInstance },
+            job: {
+                instance: jobInstance,
+                instance: { stopFrame },
+            },
         },
         formats: { annotationFormats },
         tasks: {
             activities: { loads },
         },
-        auth: { user },
     } = state;
 
-    const taskID = jobInstance.task.id;
+    const taskID = jobInstance.taskId;
     const jobID = jobInstance.id;
 
     return {
         loadActivity: taskID in loads || jobID in jobLoads ? loads[taskID] || jobLoads[jobID] : null,
         jobInstance,
+        stopFrame,
         annotationFormats,
-        user,
     };
 }
 
@@ -68,17 +69,11 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         loadAnnotations(job: any, loader: any, file: File): void {
             dispatch(uploadJobAnnotationsAsync(job, loader, file));
         },
-        showExportModal(task: any): void {
-            dispatch(exportActions.openExportModal(task));
+        showExportModal(jobInstance: any): void {
+            dispatch(exportActions.openExportModal(jobInstance));
         },
-        removeAnnotations(sessionInstance: any): void {
-            dispatch(removeAnnotationsAsync(sessionInstance));
-        },
-        switchRequestReviewDialog(visible: boolean): void {
-            dispatch(switchRequestReviewDialogAction(visible));
-        },
-        switchSubmitReviewDialog(visible: boolean): void {
-            dispatch(switchSubmitReviewDialogAction(visible));
+        removeAnnotations(startnumber: number, endnumber: number, delTrackKeyframesOnly:boolean) {
+            dispatch(removeAnnotationsAsyncAction(startnumber, endnumber, delTrackKeyframesOnly));
         },
         setForceExitAnnotationFlag(forceExit: boolean): void {
             dispatch(setForceExitAnnotationFlagAction(forceExit));
@@ -97,15 +92,13 @@ type Props = StateToProps & DispatchToProps & RouteComponentProps;
 function AnnotationMenuContainer(props: Props): JSX.Element {
     const {
         jobInstance,
-        user,
+        stopFrame,
         annotationFormats: { loaders, dumpers },
         history,
         loadActivity,
         loadAnnotations,
         showExportModal,
         removeAnnotations,
-        switchRequestReviewDialog,
-        switchSubmitReviewDialog,
         setForceExitAnnotationFlag,
         saveAnnotations,
         updateJob,
@@ -121,40 +114,39 @@ function AnnotationMenuContainer(props: Props): JSX.Element {
     const onClickMenu = (params: MenuInfo): void => {
         const [action] = params.keyPath;
         if (action === Actions.EXPORT_TASK_DATASET) {
-            showExportModal(jobInstance.task);
-        } else if (action === Actions.REMOVE_ANNO) {
-            removeAnnotations(jobInstance);
-        } else if (action === Actions.REQUEST_REVIEW) {
-            switchRequestReviewDialog(true);
-        } else if (action === Actions.SUBMIT_REVIEW) {
-            switchSubmitReviewDialog(true);
+            showExportModal(jobInstance);
         } else if (action === Actions.RENEW_JOB) {
-            jobInstance.status = TaskStatus.ANNOTATION;
+            jobInstance.state = core.enums.JobState.NEW;
+            jobInstance.stage = JobStage.ANNOTATION;
             updateJob(jobInstance);
-            history.push(`/tasks/${jobInstance.task.id}`);
+            window.location.reload();
         } else if (action === Actions.FINISH_JOB) {
-            jobInstance.status = TaskStatus.COMPLETED;
+            jobInstance.stage = JobStage.ACCEPTANCE;
+            jobInstance.state = core.enums.JobState.COMPLETED;
             updateJob(jobInstance);
-            history.push(`/tasks/${jobInstance.task.id}`);
+            history.push(`/tasks/${jobInstance.taskId}`);
         } else if (action === Actions.OPEN_TASK) {
-            history.push(`/tasks/${jobInstance.task.id}`);
+            history.push(`/tasks/${jobInstance.taskId}`);
+        } else if (action.startsWith('state:')) {
+            [, jobInstance.state] = action.split(':');
+            updateJob(jobInstance);
+            window.location.reload();
         }
     };
 
-    const isReviewer = jobInstance.reviewer?.id === user.id || user.isSuperuser;
-
     return (
         <AnnotationMenuComponent
-            taskMode={jobInstance.task.mode}
+            taskMode={jobInstance.mode}
             loaders={loaders}
             dumpers={dumpers}
             loadActivity={loadActivity}
             onUploadAnnotations={onUploadAnnotations}
             onClickMenu={onClickMenu}
+            removeAnnotations={removeAnnotations}
             setForceExitAnnotationFlag={setForceExitAnnotationFlag}
             saveAnnotations={saveAnnotations}
             jobInstance={jobInstance}
-            isReviewer={isReviewer}
+            stopFrame={stopFrame}
         />
     );
 }

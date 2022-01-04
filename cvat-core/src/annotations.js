@@ -172,13 +172,13 @@
         return false;
     }
 
-    async function clearAnnotations(session, reload) {
+    async function clearAnnotations(session, reload, startframe, endframe, delTrackKeyframesOnly) {
         checkObjectType('reload', reload, 'boolean', null);
         const sessionType = session instanceof Task ? 'task' : 'job';
         const cache = getCache(sessionType);
 
         if (cache.has(session)) {
-            cache.get(session).collection.clear();
+            cache.get(session).collection.clear(startframe, endframe, delTrackKeyframesOnly);
         }
 
         if (reload) {
@@ -276,12 +276,28 @@
         if (instance instanceof Task) {
             result = await serverProxy.tasks.exportDataset(instance.id, format, name, saveImages);
         } else if (instance instanceof Job) {
-            result = await serverProxy.tasks.exportDataset(instance.task.id, format, name, saveImages);
+            result = await serverProxy.tasks.exportDataset(instance.taskId, format, name, saveImages);
         } else {
             result = await serverProxy.projects.exportDataset(instance.id, format, name, saveImages);
         }
 
         return result;
+    }
+
+    function importDataset(instance, format, file, updateStatusCallback = () => {}) {
+        if (!(typeof format === 'string')) {
+            throw new ArgumentError('Format must be a string');
+        }
+        if (!(instance instanceof Project)) {
+            throw new ArgumentError('Instance should be a Project instance');
+        }
+        if (!(typeof updateStatusCallback === 'function')) {
+            throw new ArgumentError('Callback should be a function');
+        }
+        if (!(['application/zip', 'application/x-zip-compressed'].includes(file.type))) {
+            throw new ArgumentError('File should be file instance with ZIP extension');
+        }
+        return serverProxy.projects.importDataset(instance.id, format, file, updateStatusCallback);
     }
 
     function undoActions(session, count) {
@@ -366,6 +382,7 @@
         importAnnotations,
         exportAnnotations,
         exportDataset,
+        importDataset,
         undoActions,
         redoActions,
         freezeHistory,

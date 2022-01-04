@@ -20,7 +20,6 @@ def config_log(level):
 
 def main():
     actions = {
-
         'create': CLI.tasks_create,
         'delete': CLI.tasks_delete,
         'ls': CLI.tasks_list,

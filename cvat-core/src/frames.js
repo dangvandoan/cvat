@@ -23,6 +23,7 @@
             height,
             name,
             taskID,
+            jobID,
             frameNumber,
             startFrame,
             stopFrame,
@@ -67,6 +68,17 @@
                     },
                     tid: {
                         value: taskID,
+                        writable: false,
+                    },
+                    /**
+                     * @name jid
+                     * @type {integer}
+                     * @memberof module:API.cvat.classes.FrameData
+                     * @readonly
+                     * @instance
+                     */
+                    jid: {
+                        value: jobID,
                         writable: false,
                     },
                     /**
@@ -158,8 +170,8 @@
 
             const onDecodeAll = async (frameNumber) => {
                 if (
-                    frameDataCache[this.tid].activeChunkRequest
-                    && chunkNumber === frameDataCache[this.tid].activeChunkRequest.chunkNumber
+                    frameDataCache[this.tid].activeChunkRequest &&
+                    chunkNumber === frameDataCache[this.tid].activeChunkRequest.chunkNumber
                 ) {
                     const callbackArray = frameDataCache[this.tid].activeChunkRequest.callbacks;
                     for (let i = callbackArray.length - 1; i >= 0; --i) {
@@ -177,8 +189,8 @@
 
             const rejectRequestAll = () => {
                 if (
-                    frameDataCache[this.tid].activeChunkRequest
-                    && chunkNumber === frameDataCache[this.tid].activeChunkRequest.chunkNumber
+                    frameDataCache[this.tid].activeChunkRequest &&
+                    chunkNumber === frameDataCache[this.tid].activeChunkRequest.chunkNumber
                 ) {
                     for (const r of frameDataCache[this.tid].activeChunkRequest.callbacks) {
                         r.reject(r.frameNumber);
@@ -191,7 +203,7 @@
                 const taskDataCache = frameDataCache[this.tid];
                 const activeChunk = taskDataCache.activeChunkRequest;
                 activeChunk.request = serverProxy.frames
-                    .getData(this.tid, activeChunk.chunkNumber)
+                    .getData(this.tid, this.jid, activeChunk.chunkNumber)
                     .then((chunk) => {
                         frameDataCache[this.tid].activeChunkRequest.completed = true;
                         if (!taskDataCache.nextChunkRequest) {
@@ -236,10 +248,10 @@
                             const activeRequest = frameDataCache[this.tid].activeChunkRequest;
                             if (!provider.isChunkCached(start, stop)) {
                                 if (
-                                    !activeRequest
-                                    || (activeRequest
-                                        && activeRequest.completed
-                                        && activeRequest.chunkNumber !== chunkNumber)
+                                    !activeRequest ||
+                                    (activeRequest &&
+                                        activeRequest.completed &&
+                                        activeRequest.chunkNumber !== chunkNumber)
                                 ) {
                                     if (activeRequest && activeRequest.rejectRequestAll) {
                                         activeRequest.rejectRequestAll();
@@ -305,10 +317,10 @@
                             }
                         } else {
                             if (
-                                this.number % chunkSize > chunkSize / 4
-                                && provider.decodedBlocksCacheSize > 1
-                                && this.decodeForward
-                                && !provider.isNextChunkExists(this.number)
+                                this.number % chunkSize > chunkSize / 4 &&
+                                provider.decodedBlocksCacheSize > 1 &&
+                                this.decodeForward &&
+                                !provider.isNextChunkExists(this.number)
                             ) {
                                 const nextChunkNumber = Math.floor(this.number / chunkSize) + 1;
                                 if (nextChunkNumber * chunkSize < this.stopFrame) {
@@ -366,7 +378,7 @@
     }
 
     class FrameBuffer {
-        constructor(size, chunkSize, stopFrame, taskID) {
+        constructor(size, chunkSize, stopFrame, taskID, jobID) {
             this._size = size;
             this._buffer = {};
             this._contextImage = {};
@@ -375,6 +387,7 @@
             this._stopFrame = stopFrame;
             this._activeFillBufferRequest = false;
             this._taskID = taskID;
+            this._jobID = jobID;
         }
 
         isContextImageAvailable(frame) {
@@ -411,6 +424,7 @@
                     const frameData = new FrameData({
                         ...frameMeta,
                         taskID: this._taskID,
+                        jobID: this._jobID,
                         frameNumber: requestedFrame,
                         startFrame: frameDataCache[this._taskID].startFrame,
                         stopFrame: frameDataCache[this._taskID].stopFrame,
@@ -421,8 +435,8 @@
                         .data()
                         .then(() => {
                             if (
-                                !(chunkIdx in this._requestedChunks)
-                                || !this._requestedChunks[chunkIdx].requestedFrames.has(requestedFrame)
+                                !(chunkIdx in this._requestedChunks) ||
+                                !this._requestedChunks[chunkIdx].requestedFrames.has(requestedFrame)
                             ) {
                                 reject(chunkIdx);
                             } else {
@@ -508,7 +522,7 @@
             }
         }
 
-        async require(frameNumber, taskID, fillBuffer, frameStep) {
+        async require(frameNumber, taskID, jobID, fillBuffer, frameStep) {
             for (const frame in this._buffer) {
                 if (frame < frameNumber || frame >= frameNumber + this._size * frameStep) {
                     delete this._buffer[frame];
@@ -520,6 +534,7 @@
             let frame = new FrameData({
                 ...frameMeta,
                 taskID,
+                jobID,
                 frameNumber,
                 startFrame: frameDataCache[taskID].startFrame,
                 stopFrame: frameDataCache[taskID].stopFrame,
@@ -531,10 +546,10 @@
                 delete this._buffer[frameNumber];
                 const cachedFrames = this.cachedFrames();
                 if (
-                    fillBuffer
-                    && !this._activeFillBufferRequest
-                    && this._size > this._chunkSize
-                    && cachedFrames.length < (this._size * 3) / 4
+                    fillBuffer &&
+                    !this._activeFillBufferRequest &&
+                    this._size > this._chunkSize &&
+                    cachedFrames.length < (this._size * 3) / 4
                 ) {
                     const maxFrame = cachedFrames ? Math.max(...cachedFrames) : frameNumber;
                     if (maxFrame < this._stopFrame) {
@@ -560,8 +575,8 @@
         clear() {
             for (const chunkIdx in this._requestedChunks) {
                 if (
-                    Object.prototype.hasOwnProperty.call(this._requestedChunks, chunkIdx)
-                    && this._requestedChunks[chunkIdx].reject
+                    Object.prototype.hasOwnProperty.call(this._requestedChunks, chunkIdx) &&
+                    this._requestedChunks[chunkIdx].reject
                 ) {
                     this._requestedChunks[chunkIdx].reject('not needed');
                 }
@@ -576,10 +591,10 @@
         }
     }
 
-    async function getImageContext(taskID, frame) {
+    async function getImageContext(jobID, frame) {
         return new Promise((resolve, reject) => {
             serverProxy.frames
-                .getImageContext(taskID, frame)
+                .getImageContext(jobID, frame)
                 .then((result) => {
                     if (isNode) {
                         // eslint-disable-next-line no-undef
@@ -598,11 +613,11 @@
         });
     }
 
-    async function getContextImage(taskID, frame) {
+    async function getContextImage(taskID, jobID, frame) {
         if (frameDataCache[taskID].frameBuffer.isContextImageAvailable(frame)) {
             return frameDataCache[taskID].frameBuffer.getContextImage(frame);
         }
-        const response = getImageContext(taskID, frame);
+        const response = getImageContext(jobID, frame);
         frameDataCache[taskID].frameBuffer.addContextImage(frame, response);
         return frameDataCache[taskID].frameBuffer.getContextImage(frame);
     }
@@ -632,6 +647,7 @@
 
     async function getFrame(
         taskID,
+        jobID,
         chunkSize,
         chunkType,
         mode,
@@ -648,8 +664,8 @@
             const meta = await serverProxy.frames.getMeta(taskID);
             const mean = meta.frames.reduce((a, b) => a + b.width * b.height, 0) / meta.frames.length;
             const stdDev = Math.sqrt(
-                meta.frames.map((x) => Math.pow(x.width * x.height - mean, 2)).reduce((a, b) => a + b)
-                    / meta.frames.length,
+                meta.frames.map((x) => (x.width * x.height - mean) ** 2).reduce((a, b) => a + b) /
+                    meta.frames.length,
             );
 
             // limit of decoded frames cache by 2GB
@@ -674,6 +690,7 @@
                     chunkSize,
                     stopFrame,
                     taskID,
+                    jobID,
                 ),
                 decodedBlocksCacheSize,
                 activeChunkRequest: null,
@@ -684,7 +701,7 @@
             frameDataCache[taskID].provider.setRenderSize(frameMeta.width, frameMeta.height);
         }
 
-        return frameDataCache[taskID].frameBuffer.require(frame, taskID, isPlaying, step);
+        return frameDataCache[taskID].frameBuffer.require(frame, taskID, jobID, isPlaying, step);
     }
 
     function getRanges(taskID) {

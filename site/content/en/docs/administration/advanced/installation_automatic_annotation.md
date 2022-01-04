@@ -34,13 +34,13 @@ description: 'Information about the installation of components needed for semi-a
   [docker-compose.serverless.yml](https://github.com/openvinotoolkit/cvat/blob/develop/components/serverless/docker-compose.serverless.yml).
   For example, using wget.
 
-  ```
+  ```bash
   wget https://github.com/nuclio/nuclio/releases/download/<version>/nuctl-<version>-linux-amd64
   ```
 
-  After downloading the nuclio, give it a proper permission and do a softlink
+  After downloading the nuclio, give it a proper permission and do a softlink.
 
-  ```
+  ```bash
   sudo chmod +x nuctl-<version>-linux-amd64
   sudo ln -sf $(pwd)/nuctl-<version>-linux-amd64 /usr/local/bin/nuctl
   ```
@@ -94,6 +94,8 @@ description: 'Information about the installation of components needed for semi-a
   - The number of GPU deployed functions will be limited to your GPU memory.
   - See [deploy_gpu.sh](https://github.com/openvinotoolkit/cvat/blob/develop/serverless/deploy_gpu.sh)
     script for more examples.
+  - For some models (namely [SiamMask](/docs/manual/advanced/ai-tools#trackers)) you need an [Nvidia driver](https://www.nvidia.com/en-us/drivers/unix/)
+    version greater than or equal to 450.80.02.
 
   **Note for Windows users:**
 
