@@ -109,7 +109,7 @@ export default function Feedback(): JSX.Element {
                 visible={visible}
                 overlayClassName='cvat-feedback-popover'
             >
-                <Button
+                {/* <Button
                     style={visible ? { color: '#ff4d4f' } : {}}
                     className='cvat-feedback-button'
                     type='link'
@@ -118,7 +118,7 @@ export default function Feedback(): JSX.Element {
                     }}
                 >
                     {visible ? <CloseCircleOutlined /> : <MessageOutlined />}
-                </Button>
+                </Button> */}
             </Popover>
         </>
     );
